@@ -94,4 +94,5 @@ def main():
         if cv2.waitKey(1) &  0xFF == 27:  # esc
             break
 
-main()
+if __name__ == "__main__":
+    main()
