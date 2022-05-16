@@ -1,97 +1,116 @@
 import cv2
 import mediapipe as mp
 import time
+import math
 
 class handDetector():
-    def __init__(self, mode=False, maxHands=2, complexity=0, detectionCon=0.75, trackCon=0.75):
-        self.mpHands = mp.solutions.hands  # хотим распознавать руки (hands)
-        self.hands = self.mpHands.Hands(mode, maxHands, complexity, detectionCon, trackCon)
-        self.mpDraw = mp.solutions.drawing_utils  # утилита для рисования
+    def __init__(self, mode=False, maxHands=2, complexity=0, detectionCon=0.75, trackingCon=0.75):
+        self.mpHands = mp.solutions.hands  # говорим, что хотим распознавать руки
+        self.hands = self.mpHands.Hands(mode, maxHands, complexity, detectionCon, trackingCon)  # характеристики для распознавания
+        self.mpDraw = mp.solutions.drawing_utils # инициализация утилиты для рисования
         self.fingertips = [4, 8, 12, 16, 20] # кончики пальцев
-        self.handList = {}  # словарь координа ключевых точек на руке
-        self.fingers = {}  # словарь поднятых и опущеных пальцев
+        self.pointPosition = {}
+        self.fingers = {}
 
     def findHands(self, img, draw=False):
-        RGB_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # BGR -> RGB
-        RGB_image.flags.writeable = False
-        self.result = self.hands.process(RGB_image)  # ищем руки
-        RGB_image.flags.writeable = True
+        RGB_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img.flags.writeable = False
+        self.result = self.hands.process(RGB_image)  # ищем руки на изображении
+        img.flags.writeable = True
         if draw:
-            if self.result.multi_hand_landmarks:
-                for handLms in self.result.multi_hand_landmarks:
+            multiLandMarks = self.result.multi_hand_landmarks  # извлекаем коллекцию (список) найденных рук
+            if multiLandMarks:
+                for handLms in multiLandMarks:
                     self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
-            
-        return img
     
-    def findPosition(self, img, handNumber=0, draw=False):
-        self.handList[handNumber] = []  # Список координат пальцев в пикселях
-        h, w, c = img.shape
-        xmax, ymax = 0, 0
-        xmin, ymin = w, h
-        if self.result.multi_hand_landmarks:  # если найдены руки
-            myHand = self.result.multi_hand_landmarks[handNumber]  # извлекаем список найденных рук
-            for lm in myHand.landmark:
-                # преобразование координат из MediaPipe в Пиксели
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                self.handList[handNumber].append((cx, cy))
-                if cx > xmax:
-                    xmax = cx
-                if cy > ymax:
-                    ymax = cy
-                if cx < xmin:
-                    xmin = cx
-                if cy < ymin:
-                    ymin = cy
-            if draw:
-                offset = 20
-                cv2.rectangle(img, (xmin-offset, ymin-offset), (xmax+offset, ymax+offset), (0, 255, 0), 2)
+    def findFingersPosition(self, img, draw=False):
+        mhl = self.result.multi_hand_landmarks
+        if mhl:
+            for idx, handLms in enumerate(mhl):
+                xList = []
+                yList = []
+                self.pointPosition[idx] = []
+                for lm in handLms.landmark:
+                    h, w, c = img.shape
+                    x, y = int(lm.x * w), int(lm.y * h) 
+                    self.pointPosition[idx].append((x, y))
+                    xList.append(x)
+                    yList.append(y)
+                if draw:
+                    offset = 20
+                    xmin, xmax = min(xList), max(xList)
+                    ymin, ymax = min(yList), max(yList)
+                    cv2.rectangle(img, (xmin - offset, ymin - offset), (xmax + offset, ymax + offset), (0, 255, 0), 2)
 
-    def fingersUp(self, handNumber=0):
+    def fingersUp(self, draw=True):
         if self.result.multi_hand_landmarks:
-            if len(self.result.multi_hand_landmarks) > handNumber:
-                side_tumb = "left" # с какой стороны находится большой палец
-                if self.handList[handNumber][17][0] < self.handList[handNumber][5][0]:
-                    side_tumb = "right"
-                
-                self.fingers[handNumber] = []
-                if side_tumb == "left":
-                    if self.handList[handNumber][self.fingertips[0]][0] < self.handList[handNumber][self.fingertips[0] - 2][0]:
-                        self.fingers[handNumber].append(1)
+            handCount = len(self.result.multi_hand_landmarks)
+            for i in range(handCount):
+                self.fingers[i] = []
+                side = 'left'
+                if self.pointPosition[i][5][0] > self.pointPosition[i][17][0]:
+                    side = 'right'
+
+                if side == 'left': 
+                    if self.pointPosition[i][self.fingertips[0]][0] < self.pointPosition[i][self.fingertips[0]-2][0]:
+                        self.fingers[i].append(1)
                     else:
-                        self.fingers[handNumber].append(0)
+                        self.fingers[i].append(0)
                 else:
-                    if self.handList[handNumber][self.fingertips[0]][0] > self.handList[handNumber][self.fingertips[0] - 2][0]:
-                        self.fingers[handNumber].append(1)
+                    if self.pointPosition[i][self.fingertips[0]][0] > self.pointPosition[i][self.fingertips[0]-2][0]:
+                        self.fingers[i].append(1)
                     else:
-                        self.fingers[handNumber].append(0)
+                        self.fingers[i].append(0)
                 
-                for i in range(1, 5):
-                    if self.handList[handNumber][self.fingertips[i]][1] < self.handList[handNumber][self.fingertips[i]-2][1]:
-                        self.fingers[handNumber].append(1)
+                for j in range(1, 5):
+                    if self.pointPosition[i][self.fingertips[j]][1] < self.pointPosition[i][self.fingertips[j]-2][1]:
+                        self.fingers[i].append(1)
                     else:
-                        self.fingers[handNumber].append(0)
-                
-                print(self.fingers[handNumber])
+                        self.fingers[i].append(0)
+
+                if draw:
+                    print(self.fingers[i])
+    
+    def findDistance(self, p1, p2, handNumber=0, draw=False, img=None, r=10, t=3):
+        x1, y1 = self.pointPosition[handNumber][p1][0], self.pointPosition[handNumber][p1][1]
+        x2, y2 = self.pointPosition[handNumber][p2][0], self.pointPosition[handNumber][p2][1]
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+
+        if draw:
+            cv2.circle(img, (cx, cy), r, (0, 0, 255), cv2.FILLED)
+            cv2.circle(img, (x1, y1), r, (255, 0, 255), cv2.FILLED)
+            cv2.circle(img, (x2, y2), r, (255, 0, 255), cv2.FILLED)
+            cv2.line(img, (x1, y1), (x2, y2), (20, 120, 220), t)
+        
+        length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        return length
+
 
 def main():
     cap = cv2.VideoCapture(0)
     detector = handDetector()
+    prevTime = time.time()
     while cap.isOpened():  # пока камера "работает"
-        success, image = cap.read()  # полчаем кадр с web-камеры (True/False, image)
+        success, image = cap.read()  # получение кадра с камеры
         if not success:  # если не удалось получить кадр
-            print("Не удалось получить изображение с web-камеры")
-            continue  # переход к ближайшему циклу (while)
-        
-        image = cv2.flip(image, 1)  # зеркальное отражение картинки
-        image = detector.findHands(image, True)
-        countHands = 0
+            print('Не удалось получить кадр с web-камеры')
+            continue  # возвращаемся к ближайшему циклу
+        image = cv2.flip(image, 1)  # зеркально отражаем изображение
+        detector.findHands(image, True)
+        detector.findFingersPosition(image, True)
+        detector.fingersUp(False)
         if detector.result.multi_hand_landmarks:
-            countHands = len(detector.result.multi_hand_landmarks)
-        for i in range(countHands):
-            detector.findPosition(image, i, True)
-            detector.fingersUp(i)
-        cv2.imshow("Image", image)
-        if cv2.waitKey(1) &  0xFF == 27:  # esc
+            handCount = len(detector.result.multi_hand_landmarks)
+            for i in range(handCount):
+                l = detector.findDistance(4, 8, i, True, image)
+                print(l)
+        currentTime = time.time()
+        fps = 1 / (currentTime - prevTime)
+        prevTime = currentTime
+        cv2.putText(image, f"FPS: {fps}", (200, 100), cv2.FONT_ITALIC, 2, (255, 255, 255), 2)
+        cv2.imshow('web-cam', image)
+
+        if cv2.waitKey(1) & 0xFF == 27:  # Ожидаем нажатие ESC 
             break
 
 if __name__ == "__main__":
