@@ -1,7 +1,4 @@
-from csv import list_dialects
-from email import header
-from pkgutil import ImpImporter
-from turtle import distance
+
 import handtrackingmodule as htm
 import cv2
 import os
@@ -15,6 +12,7 @@ ERASE_THICKNESS = 100
 draw_color = (0, 0, 0)
 width = 1920
 height = 1080
+xp , yp = 0, 0
 imgCanvas = np.zeros((height , width , 3), np.uint8)
 
 
@@ -57,20 +55,51 @@ while cap.isOpened():  # пока камера "работает"
                 cx , cy = (x1 + x2) // 2, (y1 + y2) // 2
 
                 distance = detector.findDistance(4 , 8 , i)
+                cv2.circle(image , (cx , cy), BRUSH_THICKNESS//2, draw_color, cv2.FILLED)
                 if distance < 50:
                     if cy <= h:
                         if 10 <= cx <= 115:
                             header = header_list[0]
+                            draw = True
+                            erase = False
+                            draw_color = (22 , 22 , 255)
                         elif 337 <= cx <= 420:
                             header = header_list[1]
+                            draw = True
+                            erase = False
+                            draw_color = (255 , 0 , 0)
                         elif 550 <= cx <= 700:
                             header = header_list[2]
+                            draw = True
+                            erase = False
+                            draw_color = (77 , 145 , 255)
                         elif 1405 <= cx <= 1574:
                             header = header_list[3]
+                            draw = False
+                            erase = True
+                            draw_color = (0 , 0 , 0)
+                            
+                    cv2.circle(image , (cx , cy), BRUSH_THICKNESS, draw_color, cv2.FILLED)
 
+                    if draw:
+                        if xp == 0 and xp == 0:
+                            xp, yp = cx, cy
+                        cv2.line(image, (xp, yp), (cx, cy), draw_color, BRUSH_THICKNESS)
+                        cv2.line(imgCanvas, (xp, yp), (cx, cy), draw_color, BRUSH_THICKNESS)
 
+                    
+                    if erase:
+                        if xp == 0 and xp == 0:
+                            xp, yp = cx, cy
+                        cv2.line(image, (xp, yp), (cx, cy), draw_color, ERASE_THICKNESS)
+                        cv2.line(imgCanvas, (xp, yp), (cx, cy), draw_color, ERASE_THICKNESS)
 
-
+                xp , yp = cx, cy
+        imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
+        _, imgInv = cv2.threshold(imgGray , 10 , 255 , cv2.THRESH_BINARY_INV)
+        imgInv = cv2.cvtColor(imgInv , cv2.COLOR_BAYER_BG2BGR)
+        image = cv2.bitwise_and(image , imgInv)
+        image = cv2.bitwise_or(image , imgCanvas)
         image[0:h, 0:w] = header
         cv2.imshow("window", image)
         if cv2.waitKey(1) &  0xFF == 27:  # esc
